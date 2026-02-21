@@ -38,6 +38,126 @@ function patternBadge(type) {
   );
 }
 
+/**
+ * Merge fraud rings that share common accounts into a single combined ring.
+ * Uses Union-Find to group overlapping rings efficiently.
+ */
+function mergeOverlappingRings(fraudRings) {
+  if (!fraudRings || fraudRings.length === 0) return [];
+
+  // Union-Find
+  const parent = new Map();
+  const rank = new Map();
+
+  function find(x) {
+    if (!parent.has(x)) { parent.set(x, x); rank.set(x, 0); }
+    if (parent.get(x) !== x) parent.set(x, find(parent.get(x)));
+    return parent.get(x);
+  }
+
+  function union(a, b) {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra === rb) return;
+    const rankA = rank.get(ra);
+    const rankB = rank.get(rb);
+    if (rankA < rankB) { parent.set(ra, rb); }
+    else if (rankA > rankB) { parent.set(rb, ra); }
+    else { parent.set(rb, ra); rank.set(ra, rankA + 1); }
+  }
+
+  // Map each account to the ring indices it belongs to
+  const accountToRings = new Map();
+  fraudRings.forEach((ring, idx) => {
+    for (const acc of ring.member_accounts) {
+      if (!accountToRings.has(acc)) accountToRings.set(acc, []);
+      accountToRings.get(acc).push(idx);
+    }
+  });
+
+  // Union ring indices that share at least one account
+  for (const ringIndices of accountToRings.values()) {
+    for (let i = 1; i < ringIndices.length; i++) {
+      union(ringIndices[0], ringIndices[i]);
+    }
+  }
+
+  // Group rings by their root
+  const groups = new Map();
+  fraudRings.forEach((ring, idx) => {
+    const root = find(idx);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root).push(ring);
+  });
+
+  // Build merged rings
+  const merged = [];
+  for (const group of groups.values()) {
+    const allAccounts = new Set();
+    const allPatterns = new Set();
+    let maxScore = 0;
+    const subRingIds = [];
+
+    for (const ring of group) {
+      for (const acc of ring.member_accounts) allAccounts.add(acc);
+      allPatterns.add(ring.pattern_type);
+      if (ring.risk_score > maxScore) maxScore = ring.risk_score;
+      subRingIds.push(ring.ring_id);
+    }
+
+    const patternTypes = [...allPatterns].sort();
+
+    merged.push({
+      ring_id: subRingIds.sort().join('+'),
+      pattern_type: patternTypes.length === 1 ? patternTypes[0] : patternTypes.join(', '),
+      pattern_types: patternTypes,
+      member_accounts: [...allAccounts].sort(),
+      risk_score: maxScore,
+      sub_ring_ids: subRingIds,
+      sub_rings: group,
+    });
+  }
+
+  return merged;
+}
+
+function RingIdCell({ ring, isHighlighted }) {
+  const [open, setOpen] = useState(false);
+  const ids = ring.sub_ring_ids || [ring.ring_id];
+  const primary = ids[0];
+  const rest = ids.slice(1);
+
+  return (
+    <div className="relative">
+      <span className={`inline-flex items-center gap-1.5 ${
+        isHighlighted ? 'text-orange-600' : 'text-blue-600 hover:text-blue-800'
+      }`}>
+        {isHighlighted && (
+          <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
+        )}
+        {primary}
+        {rest.length > 0 && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setOpen((p) => !p); }}
+            className="ml-1 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors"
+          >
+            +{rest.length}
+          </button>
+        )}
+      </span>
+      {open && rest.length > 0 && (
+        <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[200px]">
+          {rest.map((id) => (
+            <div key={id} className="px-3 py-1.5 text-xs font-mono text-slate-600 hover:bg-slate-50 truncate">
+              {id}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MemberAccountsCell({ accounts }) {
   const [expanded, setExpanded] = useState(false);
   const display = accounts.join(', ');
@@ -86,15 +206,22 @@ function SummaryPanel({ fraudRings, onRingSelect, highlightedRingId }) {
   const [sortKey, setSortKey] = useState('risk_score');
   const [sortDir, setSortDir] = useState('desc');
 
+  // Merge overlapping rings that share accounts
+  const mergedRings = useMemo(() => mergeOverlappingRings(fraudRings), [fraudRings]);
+
   const patternTypes = useMemo(() => {
-    if (!fraudRings) return [];
-    return [...new Set(fraudRings.map((r) => r.pattern_type))].sort();
-  }, [fraudRings]);
+    if (!mergedRings) return [];
+    const types = new Set();
+    for (const r of mergedRings) {
+      for (const pt of r.pattern_types) types.add(pt);
+    }
+    return [...types].sort();
+  }, [mergedRings]);
 
   const processedRings = useMemo(() => {
-    if (!fraudRings || fraudRings.length === 0) return [];
+    if (!mergedRings || mergedRings.length === 0) return [];
 
-    let rings = [...fraudRings];
+    let rings = [...mergedRings];
 
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
@@ -106,7 +233,7 @@ function SummaryPanel({ fraudRings, onRingSelect, highlightedRingId }) {
     }
 
     if (patternFilter !== 'all') {
-      rings = rings.filter((r) => r.pattern_type === patternFilter);
+      rings = rings.filter((r) => r.pattern_types.includes(patternFilter));
     }
 
     if (riskFilter !== 'all') {
@@ -120,7 +247,7 @@ function SummaryPanel({ fraudRings, onRingSelect, highlightedRingId }) {
           cmp = a.ring_id.localeCompare(b.ring_id);
           break;
         case 'pattern_type':
-          cmp = (a.pattern_type || '').localeCompare(b.pattern_type || '');
+          cmp = (a.pattern_types.join(',')).localeCompare(b.pattern_types.join(','));
           break;
         case 'member_count':
           cmp = a.member_accounts.length - b.member_accounts.length;
@@ -134,7 +261,7 @@ function SummaryPanel({ fraudRings, onRingSelect, highlightedRingId }) {
     });
 
     return rings;
-  }, [fraudRings, searchQuery, patternFilter, riskFilter, sortKey, sortDir]);
+  }, [mergedRings, searchQuery, patternFilter, riskFilter, sortKey, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(processedRings.length / PAGE_SIZE));
   const pagedRings = useMemo(
@@ -152,7 +279,7 @@ function SummaryPanel({ fraudRings, onRingSelect, highlightedRingId }) {
   }
 
   const hasResults = processedRings.length > 0;
-  const hasData = fraudRings && fraudRings.length > 0;
+  const hasData = mergedRings && mergedRings.length > 0;
 
   const handleSort = useCallback(
     (key) => {
@@ -197,8 +324,11 @@ function SummaryPanel({ fraudRings, onRingSelect, highlightedRingId }) {
           <h2 className="text-lg font-semibold text-slate-800">Fraud Ring Summary</h2>
           {hasData && (
             <p className="text-xs text-slate-400 mt-0.5">
-              {fraudRings.length} total ring{fraudRings.length !== 1 ? 's' : ''}
-              {processedRings.length !== fraudRings.length && (
+              {mergedRings.length} merged ring{mergedRings.length !== 1 ? 's' : ''}
+              {fraudRings && mergedRings.length !== fraudRings.length && (
+                <> &middot; from {fraudRings.length} pattern{fraudRings.length !== 1 ? 's' : ''}</>
+              )}
+              {processedRings.length !== mergedRings.length && (
                 <> &middot; {processedRings.length} shown</>
               )}
             </p>
@@ -328,7 +458,7 @@ function SummaryPanel({ fraudRings, onRingSelect, highlightedRingId }) {
                   Ring ID <SortIcon active={sortKey === 'ring_id'} direction={sortDir} />
                 </th>
                 <th className={thClass} onClick={() => handleSort('pattern_type')}>
-                  Pattern <SortIcon active={sortKey === 'pattern_type'} direction={sortDir} />
+                  Patterns <SortIcon active={sortKey === 'pattern_type'} direction={sortDir} />
                 </th>
                 <th className={`${thClass} text-right`} onClick={() => handleSort('member_count')}>
                   Members <SortIcon active={sortKey === 'member_count'} direction={sortDir} />
@@ -343,7 +473,8 @@ function SummaryPanel({ fraudRings, onRingSelect, highlightedRingId }) {
             </thead>
             <tbody>
               {pagedRings.map((ring) => {
-                const isHighlighted = highlightedRingId === ring.ring_id;
+                const isHighlighted = highlightedRingId === ring.ring_id ||
+                  (ring.sub_ring_ids && ring.sub_ring_ids.includes(highlightedRingId));
                 return (
                 <tr
                   key={ring.ring_id}
@@ -355,17 +486,14 @@ function SummaryPanel({ fraudRings, onRingSelect, highlightedRingId }) {
                   onClick={() => onRingSelect?.(ring)}
                 >
                   <td className="px-4 py-3 font-medium font-mono text-xs">
-                    <span className={`inline-flex items-center gap-1.5 ${
-                      isHighlighted ? 'text-orange-600' : 'text-blue-600 hover:text-blue-800'
-                    }`}>
-                      {isHighlighted && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
-                      )}
-                      {ring.ring_id}
-                    </span>
+                    <RingIdCell ring={ring} isHighlighted={isHighlighted} />
                   </td>
                   <td className="px-4 py-3">
-                    {patternBadge(ring.pattern_type)}
+                    <div className="flex flex-wrap gap-1">
+                      {ring.pattern_types.map((pt) => (
+                        <span key={pt}>{patternBadge(pt)}</span>
+                      ))}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-right text-slate-600">
                     {ring.member_accounts.length}
