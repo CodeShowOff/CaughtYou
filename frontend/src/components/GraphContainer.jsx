@@ -10,6 +10,7 @@ const PATTERN_COLORS = {
   fan_in: "#f59e0b",
   fan_out: "#a855f7",
   shell_chain: "#06b6d4",
+  mule_chain: "#06b6d4",
   multiple: "#f43f5e",
 };
 

@@ -201,7 +201,7 @@ function UploadCard({ loading, data, error, onUpload, onFileSelect }) {
             <span>Cycles: {data.cycles_detected}</span>
             <span>Fan-in: {data.fan_in_detected}</span>
             <span>Fan-out: {data.fan_out_detected}</span>
-            <span>Shells: {data.shell_chains_detected}</span>
+            <span>Mules: {data.shell_chains_detected}</span>
             <span>Suspicious: {data.suspicious_accounts_count}</span>
             <span>Rings: {data.fraud_rings_count}</span>
             <span>Clusters: {data.fraud_clusters_count}</span>

@@ -18,7 +18,7 @@ const REASON = {
   CYCLE: (len) => `CYCLE:LEN=${len}`,
   FAN_IN: (count) => `FAN_IN:SENDERS=${count}`,
   FAN_OUT: (count) => `FAN_OUT:RECEIVERS=${count}`,
-  SHELL: (len) => `SHELL:CHAIN_LEN=${len}`,
+  MULE: (len) => `MULE:CHAIN_LEN=${len}`,
   VELOCITY: (txns, hours) => `VELOCITY:${txns}TX/${hours}H`,
   AMOUNT: (pct) => `AMOUNT:P${pct}`,
 };
@@ -32,7 +32,7 @@ const getOrCreate = (scoreMap, accountId) => {
         cycle: 0,
         fan_in: 0,
         fan_out: 0,
-        shell: 0,
+        mule: 0,
         velocity: 0,
         amount: 0,
       },
@@ -275,17 +275,17 @@ const runScoringEngine = (graphContext) => {
     entry.reason_codes.push(REASON.FAN_OUT(count));
   }
 
-  // --- 3. Shell chain scoring ---
+  // --- 3. Mule chain scoring ---
   const shellChains = shellResults ? shellResults.shellChains : [];
 
   for (const chain of shellChains) {
     for (const acc of chain.path) {
       const entry = getOrCreate(scoreMap, acc);
-      if (!entry.detected_patterns.has('shell_chain')) {
+      if (!entry.detected_patterns.has('mule_chain')) {
         entry.raw_score += SCORE_SHELL;
-        entry.sub_scores.shell = SCORE_SHELL;
-        entry.detected_patterns.add('shell_chain');
-        entry.reason_codes.push(REASON.SHELL(chain.path.length));
+        entry.sub_scores.mule = SCORE_SHELL;
+        entry.detected_patterns.add('mule_chain');
+        entry.reason_codes.push(REASON.MULE(chain.path.length));
       }
     }
   }
@@ -325,7 +325,7 @@ const runScoringEngine = (graphContext) => {
     // Pattern matching uses explicit checks for each detector type to avoid
     // brittle startsWith/replace heuristics.
     const hasCycle = [...entry.detected_patterns].some((p) => p.startsWith('cycle_length_'));
-    const hasShell = entry.detected_patterns.has('shell_chain');
+    const hasShell = entry.detected_patterns.has('mule_chain');
     const hasFanIn = entry.detected_patterns.has('fan_in');
     const hasFanOut = entry.detected_patterns.has('fan_out');
     const hasVelocity = entry.detected_patterns.has('high_velocity');
@@ -398,7 +398,7 @@ const runScoringEngine = (graphContext) => {
   const shellRings = sortedShellChains.map((chain) => ({
     ring_id: chain.chain_id,
     member_accounts: chain.path,
-    pattern_type: 'shell_chain',
+    pattern_type: 'mule_chain',
     risk_score: computeRingRiskScore(chain.path, scoreMap),
   }));
 

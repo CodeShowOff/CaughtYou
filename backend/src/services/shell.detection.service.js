@@ -14,15 +14,22 @@ const {
 } = shellCfg;
 
 /**
- * Determine if nodeId is a plausible shell/pass-through intermediate.
- * Checks total degree bounds AND that it has both incoming and outgoing
- * traffic (in/out ratio) to avoid flagging pure sinks or sources.
+ * Determine if nodeId is a plausible mule/pass-through intermediate.
+ * A mule account receives money and quickly forwards it onward.
+ * Checks:
+ *  - total degree within bounds (not a major hub)
+ *  - has both incoming and outgoing traffic
+ *  - in/out ratio is roughly balanced (not a pure sink/source)
+ *  - NOT part of a known cycle (cycle nodes are scored separately)
  *
  * NOTE: Degree bounds (SHELL_DEGREE_MIN/MAX) are strict. Legitimate
  * pass-through nodes with higher degree will be excluded. Tune via
  * SHELL_DEGREE_MAX env variable if needed.
  */
-const isShellIntermediate = (nodeId, degreeMap) => {
+const isMuleIntermediate = (nodeId, degreeMap, cycleNodeSet) => {
+  // Exclude nodes already detected in cycles — they are scored under cycle detection
+  if (cycleNodeSet && cycleNodeSet.has(nodeId)) return false;
+
   const d = degreeMap.get(nodeId);
   if (!d) return false;
   if (d.totalDegree < SHELL_DEGREE_MIN || d.totalDegree > SHELL_DEGREE_MAX) return false;
@@ -30,7 +37,7 @@ const isShellIntermediate = (nodeId, degreeMap) => {
   // Require both in and out edges (pass-through pattern)
   if (d.inDegree === 0 || d.outDegree === 0) return false;
 
-  // Check in/out ratio: a shell intermediate should have roughly balanced I/O
+  // Check in/out ratio: a mule intermediate should have roughly balanced I/O
   const ratio = Math.min(d.inDegree, d.outDegree) / Math.max(d.inDegree, d.outDegree);
   return ratio >= SHELL_MIN_IO_RATIO;
 };
@@ -138,7 +145,17 @@ const passesChainFlowChecks = (path, outgoingMap, nodes) => {
 };
 
 const runShellDetection = (graphContext) => {
-  const { outgoingEdges, outgoingMap, degreeMap, nodes } = graphContext;
+  const { outgoingEdges, outgoingMap, degreeMap, nodes, fraudRings = [] } = graphContext;
+
+  // Build set of all accounts involved in detected cycles.
+  // These nodes are excluded from mule-chain intermediate classification
+  // to prevent cycles from being double-counted as mule chains.
+  const cycleNodeSet = new Set();
+  for (const ring of fraudRings) {
+    if (ring.pattern_type === 'cycle') {
+      for (const acc of ring.member_accounts) cycleNodeSet.add(acc);
+    }
+  }
 
   // Build outgoingMap on demand if not provided (backward compat)
   let adjMap = outgoingMap;
@@ -197,39 +214,45 @@ const runShellDetection = (graphContext) => {
         // Prune: don't exceed max depth
         if (lengthAfterAdd > MAX_CHAIN_DEPTH) continue;
 
-        const nextIsShell = isShellIntermediate(next, degreeMap);
+        const nextIsMule = isMuleIntermediate(next, degreeMap, cycleNodeSet);
         const candidatePath = [...frame.path, next];
 
         // Check if candidate path meets minimum length
         if (lengthAfterAdd >= MIN_CHAIN_LENGTH) {
-          // Only intermediate nodes (indexes 1..length-2) must be shell intermediates.
-          // The first and last nodes in the chain can be any account type
-          // (they represent the source and sink of the pass-through flow).
-          let allIntermediatesValid = true;
-          for (let i = 1; i < candidatePath.length - 1; i++) {
-            if (!isShellIntermediate(candidatePath[i], degreeMap)) {
-              allIntermediatesValid = false;
-              break;
+          // A mule chain must be LINEAR: source and sink must be different accounts.
+          // If source === sink, it's a cycle (already detected separately).
+          const source = candidatePath[0];
+          const sink = candidatePath[candidatePath.length - 1];
+          if (source !== sink) {
+            // Only intermediate nodes (indexes 1..length-2) must be mule intermediates.
+            // The first and last nodes in the chain can be any account type
+            // (they represent the source and final destination of the money flow).
+            let allIntermediatesValid = true;
+            for (let i = 1; i < candidatePath.length - 1; i++) {
+              if (!isMuleIntermediate(candidatePath[i], degreeMap, cycleNodeSet)) {
+                allIntermediatesValid = false;
+                break;
+              }
             }
-          }
-          if (allIntermediatesValid) {
-            const key = chainKey(candidatePath);
-            if (!seenKeys.has(key)) {
-              // Validate amount flow conservation and temporal continuity
-              if (passesChainFlowChecks(candidatePath, adjMap, nodes)) {
-                seenKeys.add(key);
-                shellChains.push({
-                  chain_id: stableChainId(candidatePath),
-                  path: candidatePath,
-                  pattern_type: 'shell_chain',
-                });
+            if (allIntermediatesValid) {
+              const key = chainKey(candidatePath);
+              if (!seenKeys.has(key)) {
+                // Validate amount flow conservation and temporal continuity
+                if (passesChainFlowChecks(candidatePath, adjMap, nodes)) {
+                  seenKeys.add(key);
+                  shellChains.push({
+                    chain_id: stableChainId(candidatePath),
+                    path: candidatePath,
+                    pattern_type: 'mule_chain',
+                  });
+                }
               }
             }
           }
         }
 
-        // Continue extending only if within depth and next node is a shell intermediate
-        if (lengthAfterAdd < MAX_CHAIN_DEPTH && nextIsShell) {
+        // Continue extending only if within depth and next node is a mule intermediate
+        if (lengthAfterAdd < MAX_CHAIN_DEPTH && nextIsMule) {
           // Pruning: check cumulative amount variance before extending further
           // This prevents combinatorial explosion in near-complete graphs
           const amountCvMax = SHELL_AMOUNT_CV_MAX || 0;

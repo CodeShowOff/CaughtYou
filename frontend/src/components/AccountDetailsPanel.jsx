@@ -85,6 +85,7 @@ function AccountDetailsPanel({ selectedAccount, suspiciousAccounts, onClose }) {
                 fan_in: 'bg-amber-50 text-amber-700 ring-amber-200',
                 fan_out: 'bg-purple-50 text-purple-700 ring-purple-200',
                 shell_chain: 'bg-cyan-50 text-cyan-700 ring-cyan-200',
+                mule_chain: 'bg-cyan-50 text-cyan-700 ring-cyan-200',
                 high_velocity: 'bg-rose-50 text-rose-700 ring-rose-200',
                 high_amount: 'bg-orange-50 text-orange-700 ring-orange-200',
               };

@@ -29,6 +29,7 @@ function patternBadge(type) {
     fan_in:      'bg-amber-50 text-amber-700 ring-amber-200',
     fan_out:     'bg-purple-50 text-purple-700 ring-purple-200',
     shell_chain: 'bg-cyan-50 text-cyan-700 ring-cyan-200',
+    mule_chain: 'bg-cyan-50 text-cyan-700 ring-cyan-200',
   };
   const cls = map[type] || 'bg-slate-50 text-slate-600 ring-slate-200';
   return (

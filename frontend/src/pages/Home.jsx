@@ -11,7 +11,7 @@ const PATTERN_LABELS = {
   cycle: 'Cycles',
   fan_in: 'Fan-In',
   fan_out: 'Fan-Out',
-  shell_chain: 'Shell Chains',
+  mule_chain: 'Mule Chains',
   suspicious: 'Suspicious Only',
 };
 
@@ -121,7 +121,7 @@ function Home() {
     if (types.has('cycle')) filters.push('cycle');
     if (types.has('fan_in')) filters.push('fan_in');
     if (types.has('fan_out')) filters.push('fan_out');
-    if (types.has('shell_chain')) filters.push('shell_chain');
+    if (types.has('mule_chain')) filters.push('mule_chain');
     if (graphData.suspicious_accounts?.length > 0) filters.push('suspicious');
     return filters;
   }, [graphData]);
