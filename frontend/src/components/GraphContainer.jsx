@@ -586,10 +586,6 @@ function GraphContainer({ graphData, rawGraphData, onNodeSelect, activeFilter, o
       {graphData && (
         <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-600">
           <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-full bg-[#ef4444] ring-2 ring-[#991b1b]" />
-            Suspicious
-          </span>
-          <span className="flex items-center gap-1.5">
             <span className="inline-block w-3 h-3 rounded-full bg-[#60a5fa]" />
             Normal
           </span>
