@@ -1,0 +1,25 @@
+{
+  "name": "caughtyou-backend",
+  "version": "1.0.0",
+  "description": "Financial Crime Detection Engine — RIFT 2026 Hackathon",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": [
+    "money-muling",
+    "fraud-detection",
+    "graph-analysis",
+    "financial-crime"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "csv-parser": "^3.0.0",
+    "decimal.js": "^10.6.0",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}
