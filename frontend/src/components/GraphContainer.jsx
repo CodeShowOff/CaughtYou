@@ -14,7 +14,7 @@ const PATTERN_COLORS = {
   multiple: "#f43f5e",
 };
 
-const SUSPICIOUS_COLOR = "#ef4444";
+const SUSPICIOUS_COLOR = "#f97316";
 const DEFAULT_COLOR = "#60a5fa";
 const EDGE_COLOR = "#c8d3e0";
 const HIGHLIGHT_EDGE_COLOR = "#3b82f6";
@@ -589,6 +589,12 @@ function GraphContainer({ graphData, rawGraphData, onNodeSelect, activeFilter, o
             <span className="inline-block w-3 h-3 rounded-full bg-[#60a5fa]" />
             Normal
           </span>
+          {graphData.suspicious_accounts && graphData.suspicious_accounts.length > 0 && (
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-3 h-3 rounded-full bg-[#f97316]" />
+              Suspicious
+            </span>
+          )}
           {graphData.fraud_rings && graphData.fraud_rings.length > 0 && (
             <>
               {Object.entries(PATTERN_COLORS).map(([type, color]) => {
