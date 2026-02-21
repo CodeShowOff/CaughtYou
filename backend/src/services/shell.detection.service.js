@@ -48,7 +48,7 @@ const chainKey = (path) => path.join('>');
 const stableChainId = (path) => {
   const canonical = path.join('>');
   const hash = crypto.createHash('sha256').update(canonical).digest('hex').slice(0, 16);
-  return `CHAIN_${hash.toUpperCase()}`;
+  return `RING_${hash.toUpperCase()}`;
 };
 
 /**
